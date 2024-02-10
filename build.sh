@@ -1,1 +1,2 @@
-cargo build --target thumbv7em-none-eabihf
+cargo build
+qemu-img convert -f raw -O vdi target/configs/debug/bootimage-os.bin build/image.vdi
