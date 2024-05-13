@@ -4,21 +4,49 @@
 #![test_runner(os::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
-use os::println;
+use bootloader::{entry_point, BootInfo};
 use core::panic::PanicInfo;
+use os::{
+    println,
+    task::{executor::Executor, keyboard, Task},
+};
 
-#[no_mangle]
-pub extern "C" fn _start() -> ! {
+extern crate alloc;
+
+entry_point!(kernel_main);
+
+fn kernel_main(boot_info: &'static BootInfo) -> ! {
+    use os::memory;
+    use x86_64::VirtAddr; // new import
+
     println!("Hello World{}", "!");
-
     os::init();
-    
+
+    let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset);
+    let mut mapper = unsafe { memory::init(phys_mem_offset) };
+    let mut frame_allocator =
+        unsafe { memory::BootInfoFrameAllocator::init(&boot_info.memory_map) };
+
+    os::allocator::init_heap(&mut mapper, &mut frame_allocator)
+        .expect("heap initialization failed");
+
+    // as before
     #[cfg(test)]
     test_main();
 
-    println!("It did not crash!");
+    let mut executor = Executor::new(); // new
+    executor.spawn(Task::new(example_task()));
+    executor.spawn(Task::new(keyboard::print_keypresses()));
+    executor.run();
+}
 
-    os::hlt_loop();
+async fn async_number() -> u32 {
+    42
+}
+
+async fn example_task() {
+    let number = async_number().await;
+    println!("async number: {}", number);
 }
 
 /// This function is called on panic.
